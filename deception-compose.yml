@@ -1,0 +1,45 @@
+version: '3.8'
+services:
+  webserver:
+    image: honeypot/nginx-generic:latest
+    ports:
+    - 8080:80
+    - 8443:443
+    restart: always
+    logging:
+      driver: fluentd
+      options:
+        tag: honeypot.webserver
+  database:
+    image: honeypot/fakedb:latest
+    ports:
+    - 3306:3306
+    environment:
+    - FAKEDB_LOG_LEVEL=INFO
+    restart: always
+    logging:
+      driver: fluentd
+      options:
+        tag: honeypot.database
+  api:
+    build: ./api
+    ports:
+    - 5000:5000
+    logging:
+      driver: fluentd
+      options:
+        tag: honeypot.api
+  logging:
+    image: fluent/fluentd:v1.16-1
+    ports:
+    - 24224:24224
+    - 24224:24224/udp
+    volumes:
+    - ./fluentd/conf:/fluentd/etc
+    restart: always
+volumes:
+  db_data: null
+x-metadata:
+  blueprint_version: '1.0'
+  generated_at: '2025-08-04T02:33:52.328527+09:00'
+  generator: HoneypotBlueprintGenerator

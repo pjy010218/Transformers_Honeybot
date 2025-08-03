@@ -1,0 +1,37 @@
+# 허니팟 변환 규칙을 정의하는 정책 파일
+
+# '정책' 형식  ==========================================
+  # rules:
+  # -name: '이름' - 이 규칙의 이름은 무엇인가?
+  #     condition: '조건' - 어떤 서비스를 변경할 것인가?
+  #     action: '동작' - 어떤 조치를 취할 것인가?
+# =====================================================
+
+rules:
+  # MySQL을 허니팟으로 교체하는 규칙
+  - name: "MySQL to FakeDB Honeypot"
+  
+    condition:
+      image_name_contains: "mysql"
+
+    action:
+      # 아래 내용으로 서비스 전체를 교체한다.
+      type: "image_replace"
+      new_image: dvasconcelos/myhoney:latest
+      image: "honeypot/fakedb:latest"
+      ports:
+        - "3306:3306"
+      environment:
+        - FAKEDB_LOG_LEVEL=INFO
+      restart: always
+
+  # Nginx를 허니팟으로 교체하는 규칙
+  - name: "Nginx to Nginx-Honeypot"
+    condition:
+      image_name_contains: "nginx"
+    action:
+      image: "honeypot/nginx-generic:latest"
+      ports:
+        - "8080:80"
+        - "8443:443"
+      restart: always
