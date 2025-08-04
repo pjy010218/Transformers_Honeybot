@@ -40,12 +40,17 @@ class DeploymentActuator:
             return False
 
     # docker-compose up 명령을 실행하여 환경을 시작합니다.
-    def up(self, detach=True):
+    def up(self, detach=True, build=False):
         
         print("\nStarting deception environment...")
         command = ['docker-compose', '-f', self.compose_file_path, 'up']
+
+        if build:
+            command.append('--build') #--build 플래그 추가
+
         if detach:
             command.append('-d') # -d: 백그라운드에서 실행
+            
         self._run_command(command)
 
     # docker-compose down 명령을 실행하여 환경을 중지하고 리소스를 제거합니다.

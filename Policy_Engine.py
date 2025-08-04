@@ -1,75 +1,61 @@
 import yaml
+import copy
 import pprint
-import copy # 딕셔너리 원본을 보존하기 위해 deepcopy를 사용합니다
 
 class PolicyEngine:
-    # 정책 파일을 로드하고, 파싱된 IaC 데이터에 변환 규칙을 적용합니다.
-    
     def __init__(self, policy_file_path: str):
-        
-        # 정책 엔진을 초기화하고 규칙 파일을 로드합니다.
-        # :param policy_file_path: policy.yml 파일의 경로
-        
         try:
             with open(policy_file_path, 'r', encoding='utf-8') as f:
                 self.policy_data = yaml.safe_load(f)
                 self.rules = self.policy_data.get('rules', [])
-                print(f"Successfully loaded {len(self.rules)} rules from '{policy_file_path}'")
+                print(f"PolicyEngine: Successfully loaded {len(self.rules)} rules from '{policy_file_path}'")
         except Exception as e:
-            print(f"ERROR: Loading policy file: {e}")
+            print(f"ERROR: PolicyEngine failed loading policy file: {e}")
             self.rules = []
 
     def apply(self, parsed_data: dict) -> dict:
         
-        # 파싱된 데이터에 정책 규칙을 적용하여 변환된 딕셔너리를 반환합니다.
-        # :param parsed_data: IaCParser가 반환한 원본 딕셔너리
-        # :return: 규칙이 적용된 새로운 딕셔너리
+        #파싱된 데이터의 각 서비스에 어떤 정책을 적용해야 하는지 '태깅'합니다.
+        #이 메서드는 서비스 설정을 직접 변경하지 않습니다.
+        
+        print("PolicyEngine: Applying policies by tagging services...")
+        tagged_data = copy.deepcopy(parsed_data)
+        services = tagged_data.get('services', {})
 
-        if not self.rules:
-            print("NO RULES TO APPLY.: Returning original data.")
-            return parsed_data
-
-        # 원본 데이터를 직접 수정하지 않기 위해 깊은 복사(deep copy)를 사용합니다.
-        transformed_data = copy.deepcopy(parsed_data)
-
-        services = transformed_data.get('services', {})
         for service_name, service_details in services.items():
-            # 각 서비스마다 모든 규칙을 순회하며 확인합니다.
             for rule in self.rules:
                 condition = rule.get('condition', {})
-                image_name_contains = condition.get('image_name_contains')
+                action = rule.get('action', {})
 
-                # 이미지 이름이 정의되어 있고, 조건에 부합하는 경우
-                if image_name_contains and image_name_contains in service_details.get('image', ''):
-                    print(f"APPLYING RULE... '{rule.get('name')}' to service '{service_name}'...")
-                    
-                    # 'action'에 정의된 내용으로 기존 서비스 정의를 완전히 교체합니다.
-                    transformed_data['services'][service_name] = rule.get('action', {})
-                    
-                    # 하나의 서비스에 하나의 규칙만 적용하고 다음 서비스로 넘어갑니다.
-                    break 
+                # 조건 매칭 로직 (이미지 기반 또는 빌드 기반)
+                match = False
+                if 'image_name_contains' in condition and condition['image_name_contains'] in service_details.get('image', ''):
+                    match = True
+                elif 'build_context' in condition:
+                    build_info = service_details.get('build', {})
+                    # build: ./api 와 build: {context: ./api} 형태 모두 지원
+                    build_context = build_info if isinstance(build_info, str) else build_info.get('context')
+                    if condition['build_context'] == build_context:
+                        match = True
 
-        return transformed_data
-
-# --- 이전 모듈(IaCParser)과 연동하여 실행하는 예시 ---
-if __name__ == '__main__':
-    # 이전 단계에서 만든 IaCParser를 가져옵니다.
-    from IaC_Parser import IaCParser
-
-    # 1. IaC 파서로 원본 docker-compose.yml을 파싱합니다.
-    parser = IaCParser()
-    original_parsed_data = parser.parse('docker-compose.yml')
-    
-    if original_parsed_data:
-        # 2. 정책 엔진을 생성하고 정책 파일을 로드합니다.
-        policy_engine = PolicyEngine('policy.yml')
+                # 조건이 일치하면, 'action' 전체를 태깅하고 다음 서비스로 넘어감
+                if match:
+                    # 'x-honeypot-policy' 키에 action 내용을 그대로 주입
+                    service_details['x-honeypot-policy'] = action
+                    print(f"  - Tagged policy '{rule.get('name')}' on service '{service_name}'")
+                    break
         
-        # 3. 파싱된 데이터에 정책을 적용합니다.
-        transformed_data = policy_engine.apply(original_parsed_data)
+        return tagged_data
 
-        # 4. 원본과 변환된 결과를 비교하여 출력합니다.
-        print("\n======= [BEFORE] Original Parsed Data =======")
-        pprint.pprint(original_parsed_data)
+if __name__ == '__main__':
+    from IaC_Parser import IaCParser
+    
+    parser = IaCParser()
+    original_data = parser.parse('docker-compose.yml')
 
-        print("\n======= [AFTER] Transformed Data =======")
-        pprint.pprint(transformed_data)
+    if original_data:
+        policy_engine = PolicyEngine('policy.yml')
+        tagged_blueprint = policy_engine.apply(original_data)
+
+        print("\n======= [Result] Tagged Blueprint from Policy Engine =======\n")
+        pprint.pprint(tagged_blueprint)

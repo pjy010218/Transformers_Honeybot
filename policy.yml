@@ -17,21 +17,19 @@ rules:
     action:
       # 아래 내용으로 서비스 전체를 교체한다.
       type: "image_replace"
-      new_image: dvasconcelos/myhoney:latest
-      image: "honeypot/fakedb:latest"
-      ports:
-        - "3306:3306"
-      environment:
-        - FAKEDB_LOG_LEVEL=INFO
-      restart: always
+      payload:
+        image: "wildwildangel/mysql-honeypotd"
+      
 
   # Nginx를 허니팟으로 교체하는 규칙
   - name: "Nginx to Nginx-Honeypot"
     condition:
-      image_name_contains: "nginx"
+      build_context: "./api"
+
     action:
-      image: "honeypot/nginx-generic:latest"
-      ports:
-        - "8080:80"
-        - "8443:443"
-      restart: always
+      type: "dynamic_build"
+      payload:
+        use_original_base_image: true
+        fake_app_path: "./fake_apps/python-flask-generic"
+        copy_dependencies:
+          - "requirements.txt"

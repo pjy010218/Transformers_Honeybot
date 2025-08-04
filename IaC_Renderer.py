@@ -21,33 +21,7 @@ class IaCRenderer:
                     allow_unicode=True      # 한글 등 유니코드 문자 허용
                 )
             print(f"Successfully saved the final blueprint to '{output_path}'")
+            return True
         except Exception as e:
             print(f"ERROR: Rendering YAML file: {e}")
-
-# --- 전체 모듈을 연동하여 실행하는 최종 예시 ---
-if __name__ == '__main__':
-    from IaC_Parser import IaCParser
-    from Policy_Engine import PolicyEngine
-    from Blueprint_Generator import HoneypotBlueprintGenerator
-
-    # 1. [IaC 파서] 실행
-    parser = IaCParser()
-    original_data = parser.parse('docker-compose.yml')
-    if not original_data:
-        exit()
-
-    # 2. [정책 엔진] 실행
-    policy_engine = PolicyEngine('policy.yml')
-    transformed_data = policy_engine.apply(original_data)
-
-    # 3. [허니팟 청사진 생성기] 실행
-    blueprint_generator = HoneypotBlueprintGenerator()
-    final_blueprint = blueprint_generator.generate(transformed_data)
-    
-    # 4. [IaC 렌더러] 실행
-    renderer = IaCRenderer()
-    output_filename = 'deception-compose.yml'
-    renderer.render(final_blueprint, output_filename)
-
-    print("\n======= Final Blueprint Dictionary (for verification) =======")
-    pprint.pprint(final_blueprint)
+            return False
