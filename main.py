@@ -1,28 +1,25 @@
+import sys # 명령줄 인자를 읽기 위해 sys 모듈을 임포트
 import pprint
 from IaC_Parser import IaCParser
 from Policy_Engine import PolicyEngine
 from Blueprint_Generator import HoneypotBlueprintGenerator
 from IaC_Renderer import IaCRenderer
-from Deployer import DeploymentActuator # 배포 액츄에이터 임포트
+from Deployer import DeploymentActuator
 
-def main():
+def run_pipeline_generation():
     
-    # 자기 구성형 허니팟 기술의 전체 파이프라인을 실행하고,
-    # 생성된 환경을 제어할 수 있는 컨트롤러를 시작합니다.
+    # 설계도 생성 파이프라인(1~4단계)만 실행하고,
+    # 생성된 파일의 경로를 반환합니다.
     
-    print("Starting the Self-Configuring Honeypot pipeline...")
+    print("Starting the Blueprint Generation pipeline...")
 
-    # --- 입력 파일 및 출력 파일 정의 ---
     source_iac_file = 'docker-compose.yml'
     policy_file = 'policy.yml'
     output_iac_file = 'deception-compose.yml'
 
-    # 1. ~ 4. 설계도 생성 파이프라인 (기존과 동일)
     parser = IaCParser()
     original_data = parser.parse(source_iac_file)
-    if not original_data:
-        print("Pipeline stopped due to parsing error.")
-        return
+    if not original_data: return None
 
     policy_engine = PolicyEngine(policy_file)
     tagged_data = policy_engine.apply(original_data)
@@ -33,23 +30,21 @@ def main():
     renderer = IaCRenderer()
     render_success = renderer.render(final_blueprint, output_iac_file)
     
-    if not render_success:
-        print("Pipeline stopped due to rendering error.")
-        return
+    if not render_success: return None
 
-    print("\nBlueprint generation pipeline finished successfully!")
-    print(f"Final configuration file saved as '{output_iac_file}'")
-    
-    # --- 5. 배포 액츄에이터 연동 및 대화형 제어 시작 ---
-    actuator = DeploymentActuator(output_iac_file)
+    print(f"\n[SUCCESS] Blueprint generation finished successfully! File saved as '{output_iac_file}'")
+    return output_iac_file
+
+# 대화형 배포 액츄에이터를 시작합니다.
+def start_interactive_control(compose_file_path):
+    actuator = DeploymentActuator(compose_file_path)
 
     while True:
         print("\n======= Deception Environment Control =======")
         action = input("Enter command (up / down / status / exit): ").strip().lower()
 
         if action == 'up':
-            # --build 플래그를 추가하여 dynamic_build 이미지를 빌드하도록 보장
-            actuator.up(build=True) 
+            actuator.up(build=True)
         elif action == 'down':
             actuator.down()
         elif action == 'status':
@@ -61,4 +56,13 @@ def main():
             print(f"Unknown command: '{action}'")
 
 if __name__ == '__main__':
-    main()
+
+    # '--no-interactive' 인자가 있으면 파이프라인 생성만 하고 종료
+    if '--no-interactive' in sys.argv:
+        run_pipeline_generation()
+        
+    # 인자가 없으면, 파이프라인 생성 후 대화형 제어 시작
+    else:
+        output_file = run_pipeline_generation()
+        if output_file:
+            start_interactive_control(output_file)
