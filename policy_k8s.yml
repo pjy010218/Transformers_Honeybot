@@ -1,0 +1,17 @@
+rules:
+  - name: "Replace Nginx Deployment Image with Honeypot"
+    # 조건: 쿠버네티스 리소스에 특화된 조건
+    condition:
+      kubernetes_resource:
+        # 1. 리소스의 종류(kind)가 'Deployment'이고,
+        kind: "Deployment"
+        # 2. 이 경로에 있는 값에
+        path: "spec.template.spec.containers.0.image"
+        # 3. 'nginx'라는 문자열이 포함되어 있다면
+        value_contains: "nginx"
+    
+    # 행동: 이 정책을 적용하라
+    action:
+      type: "image_replace"
+      payload:
+        image: "dtagdev/nginx-honeypot:latest"
