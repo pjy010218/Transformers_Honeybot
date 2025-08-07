@@ -5,8 +5,8 @@ from Policy_Engine import PolicyEngine
 def main():
     print("🚀 Starting the Kubernetes Blueprint Generation pipeline...")
 
-    k8s_manifest_dir = 'k8s'
-    policy_file = 'policy_k8s.yml'
+    k8s_manifest_dir = 'D:\Github\Transformers_Honeybot\Transformers_Honeybot\k8s'
+    policy_file = 'D:\Github\Transformers_Honeybot\Transformers_Honeybot\policy_k8s.yml'
 
     # 1. 쿠버네티스 파서 실행
     parser = KubernetesParser()
