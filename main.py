@@ -5,12 +5,13 @@ from Policy_Engine import PolicyEngine
 from Blueprint_Generator import HoneypotBlueprintGenerator
 from IaC_Renderer import IaCRenderer
 from Deployer import DeploymentActuator
+import time
 
 def run_pipeline_generation():
     
     # 설계도 생성 파이프라인(1~4단계)만 실행하고,
     # 생성된 파일의 경로를 반환합니다.
-    
+    start_time = time.time()
     print("Starting the Blueprint Generation pipeline...")
 
     source_iac_file = 'docker-compose.yml'
@@ -31,6 +32,10 @@ def run_pipeline_generation():
     render_success = renderer.render(final_blueprint, output_iac_file)
     
     if not render_success: return None
+
+    end_time = time.time()
+    duration = end_time - start_time
+    print(f"Pipeline completed in {duration:.3f} seconds.")
 
     print(f"\n[SUCCESS] Blueprint generation finished successfully! File saved as '{output_iac_file}'")
     return output_iac_file
