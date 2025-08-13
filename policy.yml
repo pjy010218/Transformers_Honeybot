@@ -21,8 +21,8 @@ rules:
         image: "wildwildangel/mysql-honeypotd"
       
 
-  # Nginx를 허니팟으로 교체하는 규칙
-  - name: "Nginx to Nginx-Honeypot"
+  # API를 허니팟으로 교체하는 규칙
+  - name: "Dynamically Build Honeypot for Python API"
     condition:
       build_context: "./api"
 
