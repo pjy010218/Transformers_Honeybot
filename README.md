@@ -1,78 +1,89 @@
 # Transformers Honeybot
 
-Transformers Honeybot is a Python-based prototype for turning an existing infrastructure definition into a deployable deception environment. It reads Docker Compose or Kubernetes manifests, applies configurable transformation policies, and produces a Docker Compose blueprint that can be started and managed locally.
+**Transformers Honeybot is an IaC Reflection framework for building and keeping a cyber-deception environment in sync with a source infrastructure definition.**
 
-The project is intended for controlled security research and authorized test environments. Do not expose a generated environment to the public internet or use it to collect data without appropriate authorization.
+Rather than hand-crafting a separate honeypot, the project treats Docker Compose (and, for policy tagging, Kubernetes) manifests as a structural blueprint. It applies explicit transformation policies to create a separately deployable, look-alike environment: infrastructure-facing details such as service layout, exposed ports, selected configuration, and build context are retained where appropriate, while selected images or application logic are replaced with safe deception components. When the source Compose file changes, the watcher can regenerate and redeploy the generated environment.
 
-## What it does
+This repository is a prototype for authorized cyber-deception research and controlled test environments. It is not a production deployment system, and generated environments must never be exposed publicly or used to collect data without authorization.
 
-- Parses a Docker Compose file and evaluates services against rules in `policy.yml`.
-- Replaces a matched image with a configured deception image.
-- Builds a replacement application image dynamically from a selected fake application and the original build context.
-- Adds a Fluentd logging service, service-level logging configuration, health checks, and generation metadata.
-- Renders the result as `deception-compose.yml`.
-- Provides an interactive Docker Compose controller and a file watcher for regeneration and redeployment.
-- Parses Kubernetes manifests and tags matching resources using `policy_k8s.yml`.
+## Core ideas
 
-## Repository layout
+- **IaC Reflection:** parse infrastructure definitions as structured YAML and transform services through policy rules, rather than using broad text replacement.
+- **Look-alike deception environments:** retain useful operational structure from the source definition while substituting selected service images or application behavior.
+- **Policy-driven transformation:** choose the services to transform by image name or build context in a reviewable YAML policy.
+- **Self-synchronization:** watch the source Compose file; after a change, regenerate the blueprint and optionally recreate the deception environment.
+- **Observable deployment:** inject Fluentd logging configuration and health-aware service dependencies into generated Compose output.
 
-| Path | Purpose |
+## Supported scope
+
+| Input | Current capability |
 | --- | --- |
-| `main.py` | Docker Compose transformation pipeline and interactive deployment controller. |
-| `IaC_Parser.py` / `IaC_Renderer.py` | YAML input parsing and generated Compose rendering. |
-| `Policy_Engine.py` | Matches Compose services or Kubernetes resources against policy rules. |
-| `Blueprint_Generator.py` | Applies tagged Compose policies and injects logging and metadata. |
-| `Dockerfile_Generator.py` | Copies a fake app into a build context and writes `Dockerfile.honeypot`. |
-| `Deployer.py` | Wraps `docker-compose up`, `down`, and `ps`. |
-| `Sync_Controller.py` | Watches `docker-compose.yml`, regenerates the blueprint, and redeploys it. |
-| `docker-compose.yml` | Example source infrastructure definition. |
-| `policy.yml` | Example Docker Compose transformation rules. |
-| `fake_apps/` | Fake application templates used for dynamic builds. |
-| `fluentd/conf/fluent.conf` | Fluentd receiver configuration; logs are written to its standard output. |
-| `k8s/`, `main_k8s.py`, `policy_k8s.yml` | Kubernetes manifest parsing and policy-tagging example. |
+| Docker Compose YAML | Parse, apply `image_replace` and `dynamic_build` policies, render a new Compose file, and manage it through Docker Compose. |
+| Kubernetes YAML | Parse resources and attach matching policy tags for inspection. Rendering and deployment of transformed Kubernetes manifests are not implemented yet. |
 
-## Prerequisites
-
-- Python 3.9 or newer
-- Docker Engine and the legacy `docker-compose` command available on `PATH` for deployment commands
-- Python packages `PyYAML` and `watchdog`
-
-Install the pipeline dependencies:
-
-```bash
-python -m pip install PyYAML watchdog
-```
-
-The dynamically generated API image installs its own runtime dependencies from [`api/requirements.txt`](api/requirements.txt).
-
-## Quick start: Docker Compose pipeline
-
-From the repository root, generate the deception Compose blueprint without starting containers:
-
-```bash
-python main.py --no-interactive
-```
-
-The command reads `docker-compose.yml` and `policy.yml`, generates or updates `api/Dockerfile.honeypot` when the dynamic-build rule matches, and writes the final configuration to `deception-compose.yml`.
-
-To generate the blueprint and then manage it interactively:
-
-```bash
-python main.py
-```
-
-Available commands are:
+## Project layout
 
 ```text
-up      # build and start the generated environment in the background
-down    # stop and remove the generated environment
-status  # show container status
-exit    # leave the controller
+src/transformers_honeybot/  Python package and command-line interface
+tests/                      Automated regression tests
+scripts/                    Development utilities and fixture generators
+docker-compose.yml          Example source infrastructure definition
+policy.yml                  Example Compose transformation policy
+k8s/                        Example Kubernetes manifests
+policy_k8s.yml              Example Kubernetes tagging policy
+fake_apps/                  Replacement application templates
+fluentd/                    Generated-environment logging configuration
 ```
 
-## Configure policies
+## Requirements
 
-Rules live in `policy.yml`. A Compose service can be selected by an image substring or a build-context path.
+- Python 3.9 or newer
+- Docker Engine with the Docker Compose v2 plugin (`docker compose`) for deployment and log commands
+
+Install the project and its Python dependencies from the repository root:
+
+```bash
+python -m pip install -e .
+```
+
+## Quick start
+
+Generate a Compose deception blueprint without starting containers:
+
+```bash
+honeybot compose --no-interactive
+```
+
+The command uses `docker-compose.yml` and `policy.yml` by default. It writes `deception-compose.yml`, and a matching `dynamic_build` policy generates `Dockerfile.honeypot` inside the selected build context.
+
+Use custom paths when the source files live elsewhere:
+
+```bash
+honeybot compose \
+  --source path/to/docker-compose.yml \
+  --policy path/to/policy.yml \
+  --output path/to/deception-compose.yml \
+  --no-interactive
+```
+
+Omit `--no-interactive` to open a controller after generation:
+
+```text
+up      Build and start the generated environment in the background
+down    Stop and remove the generated environment
+status  Show generated-environment container status
+exit    Leave the controller
+```
+
+You can also run the package without installing its console command after adding `src` to your environment:
+
+```bash
+python -m transformers_honeybot compose --no-interactive
+```
+
+## Configure transformation policies
+
+`policy.yml` defines which services are transformed and how. Rules are evaluated in order; the first matching rule tags a service for transformation.
 
 ```yaml
 rules:
@@ -82,9 +93,9 @@ rules:
     action:
       type: image_replace
       payload:
-        image: example/deception-image:latest
+        image: example/deception-database:latest
 
-  - name: Build a replacement API
+  - name: Build a replacement application
     condition:
       build_context: "./api"
     action:
@@ -96,49 +107,63 @@ rules:
           - requirements.txt
 ```
 
-`image_replace` updates the service image and removes its `build` setting. `dynamic_build` copies the fake app into the matched build context and configures that service to build with `Dockerfile.honeypot`.
+`image_replace` switches the selected service image and removes its `build` setting. `dynamic_build` copies the selected fake application into the selected build context, creates `Dockerfile.honeypot`, and changes the service to use that Dockerfile. Relative paths are resolved from the source Compose file's directory, so the same command works from another current directory.
 
-Before deploying, review `deception-compose.yml`: policy values, published ports, source volumes, environment variables, and generated dependency settings are inherited or derived from the input definition.
+Always review the generated Compose file before deployment. It can retain source-defined ports, volumes, environment variables, and other configuration that may be unsuitable for a test environment.
 
-## Watch and redeploy on Compose changes
+## Synchronize with source changes
 
-To watch the source Compose file and redeploy after changes:
-
-```bash
-python Sync_Controller.py
-```
-
-The watcher monitors `docker-compose.yml` in the repository root. On a change, it regenerates the blueprint, runs `docker-compose down`, then runs `docker-compose up --build -d`. Stop it with `Ctrl+C` to enter the interactive controller.
-
-## Kubernetes policy tagging
-
-The Kubernetes path currently parses YAML documents and attaches matching `x-honeypot-policy` tags; it does not render or deploy a transformed Kubernetes manifest.
-
-`main_k8s.py` contains machine-specific absolute paths. Update `k8s_manifest_dir` and `policy_file` to paths on your machine before running it, or use the parser and policy engine directly:
-
-```python
-from Kubernetes_Parser import KubernetesParser
-from Policy_Engine import PolicyEngine
-
-resources = KubernetesParser().parse("k8s")
-tagged_resources = PolicyEngine("policy_k8s.yml").apply(resources)
-```
-
-## Logs and verification
-
-Generated Compose services send logs to the bundled Fluentd service using the `fluentd` logging driver. After starting the environment, inspect logs and status with:
+Watch a source Compose file and recreate the generated environment after edits:
 
 ```bash
-docker-compose -f deception-compose.yml ps
-docker-compose -f deception-compose.yml logs -f logging
+honeybot watch
 ```
 
-## Notes
+The watcher regenerates the blueprint, stops the prior generated environment, and starts a rebuilt replacement. Use the same `--source`, `--policy`, and `--output` arguments as `compose` to work with non-default paths. Press `Ctrl+C` to stop watching and enter the manual controller.
 
-- The sample configuration includes example credentials and exposed ports. Replace them before any non-local use.
-- Dynamic builds modify the selected build context by creating `_honeypot_app/` and `Dockerfile.honeypot`. These generated files can be regenerated by rerunning the pipeline.
-- Test only systems and networks you own or are explicitly authorized to assess.
+## Kubernetes policy inspection
+
+Kubernetes support currently helps inspect which resources match policies; it does not alter or deploy manifests:
+
+```bash
+honeybot k8s --manifests k8s --policy policy_k8s.yml
+```
+
+This command replaces the previous hardcoded Windows paths with portable command-line options.
+
+## Logs and cleanup
+
+Generated services send logs through the bundled Fluentd service. After deployment:
+
+```bash
+docker compose -f deception-compose.yml ps
+docker compose -f deception-compose.yml logs -f logging
+docker compose -f deception-compose.yml down
+```
+
+Dynamic builds create `_honeypot_app/` and `Dockerfile.honeypot` in the relevant build context. They are regenerated whenever the pipeline runs.
+
+## Development checks
+
+Run the regression tests without installation by setting the source path:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m unittest discover -s tests -v
+```
+
+Create disposable Compose and policy fixtures outside the repository root:
+
+```bash
+python scripts/generate_test_files.py --output-dir .tmp/honeybot-fixtures
+```
+
+## Safety notes
+
+- Use only systems, networks, and data that you own or are explicitly authorized to assess.
+- Replace sample credentials and review every published port before any non-local run.
+- Treat generated output as test infrastructure, not a substitute for production security controls.
 
 ## License
 
-No license file is currently included in this repository. Treat reuse and distribution as requiring the repository owner's permission unless a license is added.
+No license file is currently included. Reuse and distribution require the repository owner's permission unless a license is added.
